@@ -5500,6 +5500,91 @@ parseYieldExpression: true
         }
     }
 
+    var readtables = {
+        currentReadtable: {},
+
+        // A readtable is invoked within `readToken`, but it can
+        // return multiple tokens. We need to "queue" the stream of
+        // tokens so that subsequent calls to `readToken` gets the
+        // rest of the stream.
+        queued: [],
+
+        // Since an actual parser object doesn't exist and all of this
+        // works on closures, we need to create a parser object that
+        // can be passed to readtables. This is just a sketch; let's
+        // think about all the methods that need to be here.
+        parserObj: {
+            // advance is monkey-patched to the closure `_advance`
+            // created within `readToken`
+            advance: null,
+            scanPunctuator: scanPunctuator,
+            readToken: readToken,
+            Token: Token,
+            index: function(i) {
+                if(i != null) {
+                    index = i;
+                }
+                return index;
+            },
+            length: function() { return length; },
+            source: function() { return source; },
+            ch: function() { return source[index]; },
+            lineNumber: function(n) {
+                if(n != null) {
+                    lineNumber = n;
+                }
+                return lineNumber;
+            },
+            lineStart: function(n) {
+                if(n != null) {
+                    lineStart = n;
+                }
+                return lineStart;
+            },
+            isIdentifierStart: isIdentifierStart,
+            isIdentifierPart: isIdentifierPart,
+            isLineTerminator: isLineTerminator,
+            skipComment: skipComment,
+
+            // We need to provide a few functions to make it easy to
+            // track source locations. This is just a start.
+            withLoc: function(start, token) {
+                token.lineNumber = lineNumber;
+                token.lineStart = lineStart,
+                token.range = [start, index]
+                return token;
+            }
+        },
+
+        has: function(ch) {
+            return readtables.currentReadtable[ch];
+        },
+
+        getQueued: function() {
+            return readtables.queued.length ? readtables.queued.shift() : null;
+        },
+
+        peekQueued: function(lookahead) {
+            lookahead = lookahead ? lookahead : 1;
+            return readtables.queued.length ? readtables.queued[lookahead - 1] : null;
+        },
+
+        invoke: function(ch, toks) {
+            var newStream = readtables.currentReadtable[ch](
+                ch, readtables.parserObj, toks, source, index
+            );
+
+            if(!Array.isArray(newStream)) {
+                newStream = [newStream];
+            }
+
+            this.queued = this.queued.concat(newStream);
+            return this.getQueued();
+        }
+    };
+
+    readtables.parserObj.peekQueued = readtables.peekQueued;
+    readtables.parserObj.getQueued = readtables.getQueued;
 
     // Read the next token. Takes the previously read tokens, a
     // boolean indicating if the parent delimiter is () or [], and a
@@ -5526,6 +5611,7 @@ parseYieldExpression: true
         function _scanRegExp() { return attachComments(scanRegExp()); }
         
         skipComment();
+        var ch = source[index];
 
         if (extra.comments.length > commentsLen) {
             comments = extra.comments.slice(commentsLen);
@@ -5533,9 +5619,19 @@ parseYieldExpression: true
         
         if (isIn(source[index], delimiters)) {
             return attachComments(readDelim(toks, inExprDelim, parentIsBlock));
-        } 
+        }
 
-        if (source[index] === "/") {
+        var queuedToken = readtables.getQueued();
+        if(queuedToken) {
+            return queuedToken;
+        }
+        else if(readtables.has(ch)) {
+            // monkeypatch _advance since it's a closure
+            readtables.parserObj.advance = _advance;
+            return readtables.invoke(ch, toks);
+        }
+
+        if (ch === "/") {
             var prev = back(1);
             if (prev) {
                 if (prev.value === "()") {
@@ -5658,9 +5754,11 @@ parseYieldExpression: true
         delimToken.endRange = endRange;
         return delimToken;
     }
-    
-    
-    
+
+    function addToReadtable(ch, func) {
+        readtables.currentReadtable[ch] = func;
+    }
+
     // (Str) -> [...CSyntax]
     function read(code) {
         var token, tokenTree = [];
@@ -5682,8 +5780,7 @@ parseYieldExpression: true
             inIteration: false,
             inSwitch: false
         };
-        
-        
+
         while(index < length) {
             tokenTree.push(readToken(tokenTree, false, false));
         }
@@ -5809,6 +5906,7 @@ parseYieldExpression: true
     exports.read = read;
     exports.Token = Token;
 
+    exports.addToReadtable = addToReadtable;
     exports.parse = parse;
 
     // Deep copy.

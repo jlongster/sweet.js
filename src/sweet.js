@@ -29,7 +29,7 @@
         var fs          = require('fs');
         var resolveSync = require('resolve/lib/sync');
         var codegen     = require('escodegen');
-        
+
         var lib  = path.join(path.dirname(fs.realpathSync(__filename)), "../macros");
 
         var stxcaseModule = fs.readFileSync(lib + "/stxcase.js", 'utf8');
@@ -72,8 +72,8 @@
                 './parser',
                 './expander',
                 './syntax',
-                'text!./stxcase.js', 
-                'escodegen', 
+                'text!./stxcase.js',
+                'escodegen',
                 'escope'], factory);
     }
 }(this, function (exports, _, parser, expander, syn, stxcaseModule, gen, escope, fs, path, resolveSync, requireModule) {
@@ -97,7 +97,7 @@
             if (typeof code !== 'string' && !(code instanceof String)) {
                 code = toString(code);
             }
-            
+
             var source = code;
 
             if (source.length > 0) {
@@ -147,7 +147,7 @@
         options = options || {};
         options.requireModule = options.requireModule || requireModule;
 
-        var ast = parse(code, 
+        var ast = parse(code,
                         options.modules || [],
                         options);
 
@@ -170,7 +170,7 @@
                 code: output.code,
                 sourceMap: output.map.toString()
             };
-        } 
+        }
         return {
             code: codegen.generate(ast, _.extend({
                 comment: true
@@ -178,6 +178,12 @@
         };
     }
 
+    function importReadtable(readtable) {
+        Object.keys(readtable).forEach(function(ch) {
+            parser.addToReadtable(ch, readtable[ch]);
+        });
+    }
+    
     function loadNodeModule(root, moduleName, options) {
         options = options || {};
         if (moduleName[0] === '.') {
@@ -282,10 +288,9 @@
     exports.expand = expand;
     exports.parse = parse;
     exports.compile = compile;
+    exports.importReadtable = importReadtable;
     exports.loadModule = expandModule;
     exports.loadNodeModule = loadNodeModule;
     exports.loadedMacros = loadedMacros;
     exports.loadMacro = loadMacro;
 }));
-
-
