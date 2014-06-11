@@ -5541,10 +5541,14 @@ parseYieldExpression: true
                 }
                 return lineStart;
             },
+            extra: function() {
+                return extra;
+            },
             isIdentifierStart: isIdentifierStart,
             isIdentifierPart: isIdentifierPart,
             isLineTerminator: isLineTerminator,
-            skipComment: skipComment,
+            scanComment: scanComment,
+            assert: assert,
 
             // We need to provide a few functions to make it easy to
             // track source locations. This is just a start.

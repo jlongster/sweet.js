@@ -431,9 +431,20 @@ var JSXReader = CustomReader.create({
         var parser = this.parser;
         var Token = parser.Token;
 
-        this.shadowBuffer(function(prevBuffer) {
-            var selfClosing = this.readOpeningElement();
-            var openingName = this.buffer[this.buffer.length-2];
+        function tokReduce(acc, tok) {
+            return acc + tok.value;
+        }
+        
+        var tokens = this.getTokens(function() {
+            var selfClosing;
+            var openingNameToks = this.inspectTokens(function() {
+                selfClosing = this.readOpeningElement();
+            }.bind(this));
+
+            // The opening name includes any attributes as the last
+            // token, so pull it off
+            var openingName = openingNameToks.slice(0, -1)
+                .reduce(tokReduce, '');
 
             if(!selfClosing) {
                 while(this.parser.index() < this.parser.length()) {
@@ -444,41 +455,42 @@ var JSXReader = CustomReader.create({
                     this.readChild();
                 }
 
-                this.readClosingElement();
-
-                var closingName = this.buffer[this.buffer.length-1];
-                if(openingName.value !== closingName.value) {
+                var closingName = this.getTokens(
+                    this.readClosingElement.bind(this)
+                ).reduce(tokReduce, '');
+                
+                if(openingName !== closingName) {
                     throw new JSXReadError(
-                        "Expected correspoding closing tag for " + openingName.value,
+                        "Expected correspoding closing tag for " + openingName,
                         this.parser
                     )
                 }
             }
 
-            if(JSXTAGS[openingName.value]) {
-                openingName.value = 'React.DOM.' + openingName.value;
+            if(JSXTAGS[openingName]) {
+                openingNameToks[0].value = 'React.DOM.' + openingName;
             }
-
-            var firstTok = this.buffer[0];
-            var lastTok = this.buffer[this.buffer.length-1];
-
-            prevBuffer.push(parser.withLoc(parser.index(), {
-                type: Token.Identifier,
-                value: 'DOM',
-            }));
-
-            prevBuffer.push(parser.withLoc(parser.index(), {
-                type: Token.Delimiter,
-                value: '{}',
-                startLineNumber: firstTok.lineNumber,
-                startLineStart: firstTok.lineStart,
-                startRange: firstTok.range,
-                inner: this.buffer,
-                endLineNumber: lastTok.lineNumber,
-                endLineStart: lastTok.lineStart,
-                endRange: lastTok.range,
-            }));
         }.bind(this));
+
+        var firstTok = tokens[0];
+        var lastTok = tokens[tokens.length - 1];
+
+        this.add(parser.withLoc(parser.index(), {
+            type: Token.Identifier,
+            value: 'DOM',
+        }));
+
+        this.add(parser.withLoc(parser.index(), {
+            type: Token.Delimiter,
+            value: '{}',
+            startLineNumber: firstTok.lineNumber,
+            startLineStart: firstTok.lineStart,
+            startRange: firstTok.range,
+            inner: tokens,
+            endLineNumber: lastTok.lineNumber,
+            endLineStart: lastTok.lineStart,
+            endRange: lastTok.range,
+        }));
     },
 
     readOpeningElement: function() {
@@ -487,9 +499,9 @@ var JSXReader = CustomReader.create({
 
         this.expect('<');
         this.readElementName();            
-        parser.skipComment();
+        parser.scanComment();
 
-        this.shadowBuffer(function(prevBuffer) {
+        var tokens = this.getTokens(function() {
             var end = false;
 
             while(parser.index() < parser.length() &&
@@ -504,23 +516,23 @@ var JSXReader = CustomReader.create({
                     });
                 }
             }
-
-            if(this.buffer.length) {
-                prevBuffer.push(parser.withLoc(parser.index(), {
-                    type: parser.Token.Delimiter,
-                    value: '{}',
-                    inner: this.buffer
-                }));
-            }
-            else {
-                prevBuffer.push({
-                    type: parser.Token.NullLiteral,
-                    value: 'null'
-                });
-            }
         }.bind(this));
 
-        parser.skipComment();
+        if(tokens.length) {
+            this.add(parser.withLoc(parser.index(), {
+                type: parser.Token.Delimiter,
+                value: '{}',
+                inner: tokens
+            }));
+        }
+        else {
+            this.add({
+                type: parser.Token.NullLiteral,
+                value: 'null'
+            });
+        }
+
+        parser.scanComment();
         if(this.match('/')) {
             selfClosing = true;
             this.expect('/');
@@ -640,7 +652,9 @@ var JSXReader = CustomReader.create({
         var ch = source[index];
         var str = '', count = 0, entity;
 
-        parser.assert(ch === '&', 'Entity must start with an ampersand');
+        if(ch !== '&') {
+            throw new JSXReadError('Entity must start with an ampersand');
+        }
         index++;
 
         while(index < parser.length() && count < 10) {
@@ -710,7 +724,7 @@ var JSXReader = CustomReader.create({
             });
         }
 
-        this.parser.skipComment();
+        this.parser.scanComment();
     },
 
     readAttributeValue: function() {
@@ -746,11 +760,15 @@ var JSXReader = CustomReader.create({
     },
 
     readExpressionContainer: function() {
+        var parser = this.parser;
         this.expect('{');
-        // TODO: maintain comments
+        this.parser.scanComment();
+
         while(!this.match('}')) {
             this.readToken();
+            this.parser.scanComment();
         }
+        
         this.expect('}');
     },
 
@@ -763,7 +781,7 @@ var JSXReader = CustomReader.create({
 
     readIdentifier: function() {
         var parser = this.parser;
-        parser.skipComment();
+        parser.scanComment();
 
         var index = parser.index();
         var source = parser.source();

@@ -103,13 +103,27 @@
         }
     };
 
-    CustomReader.prototype.shadowBuffer = function(func) {
-        var prev = this.buffer;
-        this.buffer = [];
-        func(prev);
-        this.buffer = prev;
+    CustomReader.prototype.inspectTokens = function(func) {
+        var i = this.buffer.length;
+        func();
+        return this.buffer.slice(i);
     };
 
+    CustomReader.prototype.getTokens = function(func) {
+        var i = this.buffer.length;
+        func();
+        var toks = this.buffer.slice(i);
+        this.buffer = this.buffer.slice(0, i);
+        return toks;
+    };
+
+    CustomReader.prototype.lookbehind = function(n) {
+        this.parser.assert(n > 0,
+                           'lookbehind requires a number greater than 0');
+        var len = this.buffer.length, i = len - n;
+        return i < len ? this.buffer[i] : null;
+    };
+    
     CustomReader.prototype.finish = function() {
         var buf = this.buffer;
         this.buffer = [];
