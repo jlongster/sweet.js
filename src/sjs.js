@@ -73,8 +73,7 @@ exports.run = function() {
     });
 
     if(readtableModule) {
-        var readtable = require(readtableModule);
-        sweet.importReadtable(readtable);
+        sweet.importReadtable(readtableModule);
     }
 
     var options = {

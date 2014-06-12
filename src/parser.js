@@ -70,6 +70,8 @@ parseYieldExpression: true
         ClassPropertyType,
         source,
         strict,
+
+        // This is all the global state while reading
         index,
         lineNumber,
         lineStart,
@@ -77,6 +79,8 @@ parseYieldExpression: true
         sm_lineStart,
         sm_range,
         sm_index,
+        // End global state
+        
         length,
         delegate,
         tokenStream,
@@ -5514,11 +5518,9 @@ parseYieldExpression: true
         // can be passed to readtables. This is just a sketch; let's
         // think about all the methods that need to be here.
         parserObj: {
-            // advance is monkey-patched to the closure `_advance`
-            // created within `readToken`
-            advance: null,
             scanPunctuator: scanPunctuator,
             readToken: readToken,
+            
             Token: Token,
             index: function(i) {
                 if(i != null) {
@@ -5625,15 +5627,22 @@ parseYieldExpression: true
             return attachComments(readDelim(toks, inExprDelim, parentIsBlock));
         }
 
+        // TODO: clean up the parserObj API, make the reader depend
+        // less on the parser API
         var queuedToken = readtables.getQueued();
         if(queuedToken) {
             return queuedToken;
         }
         else if(readtables.has(ch)) {
-            // monkeypatch _advance since it's a closure
             readtables.parserObj.advance = _advance;
             return readtables.invoke(ch, toks);
         }
+        
+        // var readtableToken;
+        // if((readtableToken = readtables.getQueued()) ||
+        //    (readtables.has(ch) && (readtableToken = readtables.invoke(ch, toks))) {
+        //     return readtableToken;
+        // }
 
         if (ch === "/") {
             var prev = back(1);

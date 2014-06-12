@@ -1,7 +1,6 @@
 
-var syn = require('./syntax');
-var parser = require('./parser');
-var CustomReader = require('./readtables').CustomReader;
+var syn = require('./build/lib/syntax');
+var CustomReader = require('./build/lib/readtables').CustomReader;
 
 function JSXBailError(message) {
     this.message = message;
@@ -413,64 +412,20 @@ var JSXTAGS = {
 
 var JSXReader = CustomReader.create({
     read: function() {
+        var parser = this.parser;
+        var Token = parser.Token;
+
         try {
-            this.readElement();
+            var tokens = this.getTokens(this.readElement.bind(this));
         }
         catch(e) {
             if(!(e instanceof JSXBailError)) {
                 throw e;
             }
-            this.reset();
             //console.log(e.message);
+            this.reset();
+            return this.finish();
         }
-
-        return this.finish();
-    },
-
-    readElement: function() {
-        var parser = this.parser;
-        var Token = parser.Token;
-
-        function tokReduce(acc, tok) {
-            return acc + tok.value;
-        }
-        
-        var tokens = this.getTokens(function() {
-            var selfClosing;
-            var openingNameToks = this.inspectTokens(function() {
-                selfClosing = this.readOpeningElement();
-            }.bind(this));
-
-            // The opening name includes any attributes as the last
-            // token, so pull it off
-            var openingName = openingNameToks.slice(0, -1)
-                .reduce(tokReduce, '');
-
-            if(!selfClosing) {
-                while(this.parser.index() < this.parser.length()) {
-                    if(this.match('<', '/')) {
-                        break;
-                    }
-
-                    this.readChild();
-                }
-
-                var closingName = this.getTokens(
-                    this.readClosingElement.bind(this)
-                ).reduce(tokReduce, '');
-                
-                if(openingName !== closingName) {
-                    throw new JSXReadError(
-                        "Expected correspoding closing tag for " + openingName,
-                        this.parser
-                    )
-                }
-            }
-
-            if(JSXTAGS[openingName]) {
-                openingNameToks[0].value = 'React.DOM.' + openingName;
-            }
-        }.bind(this));
 
         var firstTok = tokens[0];
         var lastTok = tokens[tokens.length - 1];
@@ -491,6 +446,48 @@ var JSXReader = CustomReader.create({
             endLineStart: lastTok.lineStart,
             endRange: lastTok.range,
         }));
+    },
+
+    readElement: function() {
+        function tokReduce(acc, tok) {
+            return acc + tok.value;
+        }
+
+        var parser = this.parser;
+        var Token = parser.Token, selfClosing;
+        var openingNameToks = this.inspectTokens(function() {
+            selfClosing = this.readOpeningElement();
+        }.bind(this));
+
+        // The opening name includes any attributes as the last
+        // token, so pull it off
+        var openingName = openingNameToks.slice(0, -1)
+            .reduce(tokReduce, '');
+
+        if(!selfClosing) {
+            while(this.parser.index() < this.parser.length()) {
+                if(this.match('<', '/')) {
+                    break;
+                }
+
+                this.readChild();
+            }
+
+            var closingName = this.getTokens(
+                this.readClosingElement.bind(this)
+            ).reduce(tokReduce, '');
+            
+            if(openingName !== closingName) {
+                throw new JSXReadError(
+                    "Expected correspoding closing tag for " + openingName,
+                    this.parser
+                )
+            }
+        }
+
+        if(JSXTAGS[openingName]) {
+            openingNameToks[0].value = 'React.DOM.' + openingName;
+        }
     },
 
     readOpeningElement: function() {
@@ -554,7 +551,7 @@ var JSXReader = CustomReader.create({
             this.readExpressionContainer();
         }
         else if(this.match('<')) {
-            this.readElement();
+            this.read();
         }
         else {
             this.readText(['{', '<'])
@@ -590,20 +587,20 @@ var JSXReader = CustomReader.create({
         var parser = this.parser;
         output.forEach(function(str, i) {
             if(i !== 0) {
-                this.buffer.push({
+                this.add({
                     type: parser.Token.Punctuator,
                     value: '+'
                 });
-                this.buffer.push({
+                this.add({
                     type: parser.Token.StringLiteral,
                     value: ' '
                 });
-                this.buffer.push({
+                this.add({
                     type: parser.Token.Punctuator,
                     value: '+'
                 });
             }
-            this.buffer.push({
+            this.add({
                 type: parser.Token.StringLiteral,
                 value: str
             });
@@ -813,9 +810,10 @@ var JSXReader = CustomReader.create({
 });
 
 module.exports = {
-    '<': function(ch, parser) {
+    '<': function (ch, parser) {
         var reader = new JSXReader(parser);
-        var x = reader.read();
+        reader.read();
+        var x = reader.finish();
         if(!x.length) {
             return parser.advance();
         }

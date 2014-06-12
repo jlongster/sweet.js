@@ -178,7 +178,11 @@
         };
     }
 
-    function importReadtable(readtable) {
+    function importReadtable(readtableModule) {
+        var filename = resolveSync(readtableModule, {
+            basedir: process.cwd()
+        });
+        var readtable = require(filename);
         Object.keys(readtable).forEach(function(ch) {
             parser.addToReadtable(ch, readtable[ch]);
         });
