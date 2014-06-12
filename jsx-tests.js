@@ -1,5 +1,5 @@
 var fs = require('fs');
-var sweet = require('./build/lib/sweet.js');
+var sweet = require('./lib/sweet.js');
 sweet.importReadtable('./jsx-reader.js');
 
 var jsxmacro = fs.readFileSync('./jsx-macro.js', 'utf8');
@@ -51,3 +51,5 @@ tests.forEach(function(test, i) {
                         ' but got ' + code);
     }
 });
+
+console.log('passed');
