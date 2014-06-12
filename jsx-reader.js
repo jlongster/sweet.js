@@ -1,6 +1,6 @@
 
-var syn = require('./build/lib/syntax');
-var CustomReader = require('./build/lib/readtables').CustomReader;
+var syn = require('./lib/syntax');
+var CustomReader = require('./lib/readtables').CustomReader;
 
 function JSXBailError(message) {
     this.message = message;

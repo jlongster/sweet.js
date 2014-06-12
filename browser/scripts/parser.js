@@ -58,7 +58,11 @@ parseYieldExpression: true
     }
 }(this, function (exports$2, expander) {
     'use strict';
-    var Token, TokenName, FnExprTokens, Syntax, PropertyKind, Messages, Regex, SyntaxTreeDelegate, ClassPropertyType, source, strict, index, lineNumber, lineStart, sm_lineNumber, sm_lineStart, sm_range, sm_index, length, delegate, tokenStream, streamIndex, lookahead, lookaheadIndex, state, extra;
+    var Token, TokenName, FnExprTokens, Syntax, PropertyKind, Messages, Regex, SyntaxTreeDelegate, ClassPropertyType, source, strict,
+        // This is all the global state while reading
+        index, lineNumber, lineStart, sm_lineNumber, sm_lineStart, sm_range, sm_index,
+        // End global state
+        length, delegate, tokenStream, streamIndex, lookahead, lookaheadIndex, state, extra;
     Token = {
         BooleanLiteral: 1,
         EOF: 2,
@@ -4696,6 +4700,78 @@ parseYieldExpression: true
             return true;
         }
     }
+    var readtables = {
+            currentReadtable: {},
+            queued: [],
+            parserObj: {
+                scanPunctuator: scanPunctuator,
+                readToken: readToken,
+                Token: Token,
+                index: function (i) {
+                    if (i != null) {
+                        index = i;
+                    }
+                    return index;
+                },
+                length: function () {
+                    return length;
+                },
+                source: function () {
+                    return source;
+                },
+                ch: function () {
+                    return source[index];
+                },
+                lineNumber: function (n) {
+                    if (n != null) {
+                        lineNumber = n;
+                    }
+                    return lineNumber;
+                },
+                lineStart: function (n) {
+                    if (n != null) {
+                        lineStart = n;
+                    }
+                    return lineStart;
+                },
+                extra: function () {
+                    return extra;
+                },
+                isIdentifierStart: isIdentifierStart,
+                isIdentifierPart: isIdentifierPart,
+                isLineTerminator: isLineTerminator,
+                scanComment: scanComment,
+                assert: assert,
+                withLoc: function (start, token) {
+                    token.lineNumber = lineNumber;
+                    token.lineStart = lineStart, token.range = [
+                        start,
+                        index
+                    ];
+                    return token;
+                }
+            },
+            has: function (ch) {
+                return readtables.currentReadtable[ch];
+            },
+            getQueued: function () {
+                return readtables.queued.length ? readtables.queued.shift() : null;
+            },
+            peekQueued: function (lookahead$2) {
+                lookahead$2 = lookahead$2 ? lookahead$2 : 1;
+                return readtables.queued.length ? readtables.queued[lookahead$2 - 1] : null;
+            },
+            invoke: function (ch, toks) {
+                var newStream = readtables.currentReadtable[ch](ch, readtables.parserObj, toks, source, index);
+                if (!Array.isArray(newStream)) {
+                    newStream = [newStream];
+                }
+                this.queued = this.queued.concat(newStream);
+                return this.getQueued();
+            }
+        };
+    readtables.parserObj.peekQueued = readtables.peekQueued;
+    readtables.parserObj.getQueued = readtables.getQueued;
     // Read the next token. Takes the previously read tokens, a
     // boolean indicating if the parent delimiter is () or [], and a
     // boolean indicating if the parent delimiter is {} a block
@@ -4730,13 +4806,28 @@ parseYieldExpression: true
             return attachComments(scanRegExp());
         }
         skipComment();
+        var ch = source[index];
         if (extra.comments.length > commentsLen) {
             comments = extra.comments.slice(commentsLen);
         }
         if (isIn(source[index], delimiters)) {
             return attachComments(readDelim(toks, inExprDelim, parentIsBlock));
         }
-        if (source[index] === '/') {
+        // TODO: clean up the parserObj API, make the reader depend
+        // less on the parser API
+        var queuedToken = readtables.getQueued();
+        if (queuedToken) {
+            return queuedToken;
+        } else if (readtables.has(ch)) {
+            readtables.parserObj.advance = _advance;
+            return readtables.invoke(ch, toks);
+        }
+        // var readtableToken;
+        // if((readtableToken = readtables.getQueued()) ||
+        //    (readtables.has(ch) && (readtableToken = readtables.invoke(ch, toks))) {
+        //     return readtableToken;
+        // }
+        if (ch === '/') {
             var prev = back(1);
             if (prev) {
                 if (prev.value === '()') {
@@ -4847,6 +4938,9 @@ parseYieldExpression: true
         delimToken.endLineStart = endLineStart;
         delimToken.endRange = endRange;
         return delimToken;
+    }
+    function addToReadtable(ch, func) {
+        readtables.currentReadtable[ch] = func;
     }
     // (Str) -> [...CSyntax]
     function read(code) {
@@ -4989,6 +5083,7 @@ parseYieldExpression: true
     exports$2.tokenize = tokenize;
     exports$2.read = read;
     exports$2.Token = Token;
+    exports$2.addToReadtable = addToReadtable;
     exports$2.parse = parse;
     // Deep copy.
     exports$2.Syntax = function () {

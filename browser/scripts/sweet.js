@@ -138,6 +138,13 @@
         }
         return { code: codegen.generate(ast, _.extend({ comment: true }, options.escodegen)) };
     }
+    function importReadtable(readtableModule) {
+        var filename = resolveSync(readtableModule, { basedir: process.cwd() });
+        var readtable = require(filename);
+        Object.keys(readtable).forEach(function (ch) {
+            parser.addToReadtable(ch, readtable[ch]);
+        });
+    }
     function loadNodeModule(root, moduleName, options) {
         options = options || {};
         if (moduleName[0] === '.') {
@@ -232,6 +239,7 @@
     exports$2.expand = expand;
     exports$2.parse = parse;
     exports$2.compile = compile;
+    exports$2.importReadtable = importReadtable;
     exports$2.loadModule = expandModule;
     exports$2.loadNodeModule = loadNodeModule;
     exports$2.loadedMacros = loadedMacros;
